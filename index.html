@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mapa de puntos de venta con ilícito</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <style>
+    :root { --verde:#0b5d52; --verde2:#073d37; --claro:#f4f7f6; --borde:#d7e0de; }
+    html, body { height:100%; margin:0; font-family: Arial, Helvetica, sans-serif; background:#eef3f1; color:#1b2b29; }
+    .app { display:grid; grid-template-columns: 360px 1fr; height:100%; }
+    aside { background:white; border-right:1px solid var(--borde); padding:18px; overflow:auto; box-shadow:0 0 18px rgba(0,0,0,.08); z-index:900; }
+    h1 { margin:0 0 4px; font-size:20px; color:var(--verde2); line-height:1.2; }
+    .sub { font-size:12px; color:#61706d; margin-bottom:14px; }
+    .kpis { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0; }
+    .kpi { border:1px solid var(--borde); border-radius:14px; padding:12px; background:var(--claro); }
+    .kpi strong { display:block; font-size:22px; color:var(--verde); }
+    .kpi span { font-size:12px; color:#5f6c69; }
+    label { display:block; font-size:12px; font-weight:700; margin-top:12px; color:#344541; }
+    input, select { width:100%; box-sizing:border-box; border:1px solid var(--borde); border-radius:10px; padding:10px; margin-top:5px; font-size:14px; background:white; }
+    button { width:100%; border:0; border-radius:10px; padding:11px; margin-top:12px; background:var(--verde); color:white; font-weight:700; cursor:pointer; }
+    button.secondary { background:#e9f0ee; color:#1b2b29; border:1px solid var(--borde); }
+    #map { height:100%; width:100%; }
+    .legend { margin-top:14px; padding:12px; background:#fff7e6; border:1px solid #edd8a8; border-radius:12px; font-size:12px; line-height:1.4; }
+    .list { margin-top:14px; font-size:12px; }
+    .row { display:flex; justify-content:space-between; gap:8px; padding:7px 0; border-bottom:1px solid #edf1f0; }
+    .row b { color:#0b5d52; }
+    .popup h3 { margin:0 0 6px; font-size:15px; color:#0b5d52; }
+    .popup p { margin:4px 0; font-size:12px; }
+    @media (max-width: 800px) { .app { grid-template-columns:1fr; grid-template-rows:auto 1fr; } aside { max-height:42vh; } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Mapa de puntos de venta con ilícito</h1>
+    <div class="sub">Fuente: registro Excel 17.06.2026</div>
+    <div class="kpis">
+      <div class="kpi"><strong id="kTotal">0</strong><span>Puntos visibles</span></div>
+      <div class="kpi"><strong id="kDistritos">0</strong><span>Distritos visibles</span></div>
+    </div>
+    <label for="q">Buscar por nombre, dirección, comuna o ciudad</label>
+    <input id="q" placeholder="Ej: Antofagasta, Baquedano, Juan Pérez" />
+    <label for="distrito">Filtrar por distrito/comuna</label>
+    <select id="distrito"><option value="">Todos</option></select>
+    <button id="btnFiltrar">Aplicar filtro</button>
+    <button id="btnLimpiar" class="secondary">Limpiar filtros</button>
+    <div class="legend">Los puntos se agrupan automáticamente para que el mapa cargue fluido. Al acercar el zoom se separan los marcadores.</div>
+    <div class="list" id="topDistritos"></div>
+  </aside>
+  <main id="map"></main>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+const map = L.map('map', { preferCanvas:true }).setView([-33.45, -70.66], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+const cluster = L.markerClusterGroup({ chunkedLoading:true, maxClusterRadius:55 });
+let data = null;
+let markers = [];
+function norm(s){ return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+function esc(s){ return (s || '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function popup(p){ return `<div class="popup"><h3>${esc(p.nombre)}</h3><p><b>Nro.:</b> ${esc(p.nro)}</p><p><b>Dirección:</b> ${esc(p.direccion)}</p><p><b>Distrito:</b> ${esc(p.distrito)}</p><p><b>Ciudad:</b> ${esc(p.ciudad)}</p><p><b>Ilícito:</b> ${esc(p.ilicito)}</p></div>`; }
+function passes(f){
+  const p=f.properties, q=norm(document.getElementById('q').value), d=document.getElementById('distrito').value;
+  const blob=norm([p.nombre,p.direccion,p.distrito,p.ciudad,p.ilicito,p.nro].join(' '));
+  return (!q || blob.includes(q)) && (!d || p.distrito===d);
+}
+function draw(){
+  cluster.clearLayers(); markers=[];
+  const counts={}; let visible=0;
+  data.features.forEach(f=>{
+    if(!passes(f)) return;
+    const [lon,lat]=f.geometry.coordinates;
+    const m=L.marker([lat,lon]).bindPopup(popup(f.properties));
+    cluster.addLayer(m); markers.push(m); visible++;
+    counts[f.properties.distrito]=(counts[f.properties.distrito]||0)+1;
+  });
+  map.addLayer(cluster);
+  document.getElementById('kTotal').textContent=visible.toLocaleString('es-CL');
+  document.getElementById('kDistritos').textContent=Object.keys(counts).length.toLocaleString('es-CL');
+  const top=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  document.getElementById('topDistritos').innerHTML='<b>Top distritos visibles</b>'+top.map(([k,v])=>`<div class="row"><span>${esc(k)}</span><b>${v}</b></div>`).join('');
+  if(markers.length){ try { map.fitBounds(cluster.getBounds().pad(.12)); } catch(e){} }
+}
+fetch('data/puntos.geojson').then(r=>r.json()).then(j=>{
+  data=j;
+  const distritos=[...new Set(data.features.map(f=>f.properties.distrito).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  document.getElementById('distrito').innerHTML='<option value="">Todos</option>'+distritos.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  draw();
+});
+document.getElementById('btnFiltrar').addEventListener('click', draw);
+document.getElementById('btnLimpiar').addEventListener('click', ()=>{ document.getElementById('q').value=''; document.getElementById('distrito').value=''; draw(); });
+document.getElementById('q').addEventListener('keydown', e=>{ if(e.key==='Enter') draw(); });
+document.getElementById('distrito').addEventListener('change', draw);
+</script>
+</body>
+</html>
