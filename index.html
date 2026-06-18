@@ -36,18 +36,18 @@
 <div class="app">
   <aside>
     <h1>Mapa de puntos de venta con ilícito</h1>
-    <div class="sub">Fuente: registro Excel 17.06.2026</div>
+    <div class="sub">Fuente: registro Excel al 17.06.2026</div>
     <div class="kpis">
       <div class="kpi"><strong id="kTotal">0</strong><span>Puntos visibles</span></div>
-      <div class="kpi"><strong id="kDistritos">0</strong><span>Distritos visibles</span></div>
+      <div class="kpi"><strong id="kDistritos">0</strong><span>Comunas visibles</span></div>
     </div>
     <label for="q">Buscar por nombre, dirección, comuna o ciudad</label>
     <input id="q" placeholder="Ej: Antofagasta, Baquedano, Juan Pérez" />
-    <label for="distrito">Filtrar por distrito/comuna</label>
+    <label for="distrito">Filtrar por comuna</label>
     <select id="distrito"><option value="">Todos</option></select>
     <button id="btnFiltrar">Aplicar filtro</button>
     <button id="btnLimpiar" class="secondary">Limpiar filtros</button>
-    <div class="legend">Los puntos se agrupan automáticamente para que el mapa cargue fluido. Al acercar el zoom se separan los marcadores.</div>
+    <div class="legend">Puntos agrupados de forma automática.</div>
     <div class="list" id="topDistritos"></div>
   </aside>
   <main id="map"></main>
@@ -82,7 +82,7 @@ function draw(){
   document.getElementById('kTotal').textContent=visible.toLocaleString('es-CL');
   document.getElementById('kDistritos').textContent=Object.keys(counts).length.toLocaleString('es-CL');
   const top=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  document.getElementById('topDistritos').innerHTML='<b>Top distritos visibles</b>'+top.map(([k,v])=>`<div class="row"><span>${esc(k)}</span><b>${v}</b></div>`).join('');
+  document.getElementById('topDistritos').innerHTML='<b>Top Regiones/Comunas visibles</b>'+top.map(([k,v])=>`<div class="row"><span>${esc(k)}</span><b>${v}</b></div>`).join('');
   if(markers.length){ try { map.fitBounds(cluster.getBounds().pad(.12)); } catch(e){} }
 }
 fetch('data/puntos.geojson').then(r=>r.json()).then(j=>{
